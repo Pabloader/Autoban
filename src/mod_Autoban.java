@@ -31,7 +31,7 @@ public class mod_Autoban extends BaseMod
     @Override
     public String getVersion()
     {
-        return "0.0.18e";
+        return "0.0.19e";
     }
 
     @Override
@@ -50,7 +50,7 @@ public class mod_Autoban extends BaseMod
         }
         catch (IOException ex)
         {
-            Logger.getLogger("Minecraft").log(Level.SEVERE, null, ex);
+            Logger.getLogger(getClass().getName()).log(Level.SEVERE, null, ex);
         }
     }
 
@@ -164,9 +164,8 @@ public class mod_Autoban extends BaseMod
 
     private void log(String s)
     {
-        s = s.replaceAll("§[0-9a-f]", "");
-        s = s.replaceAll("&[0-9a-f]", "");
-        s = s.replace("[Autoban]", "");
+        s = s.replaceAll("[§&][0-9a-f]", "");
+        s = s.replaceAll("\\[Autoban\\]\\s*", "");
         System.out.println("[Autoban] " + s);
         logFile(s);
     }
@@ -174,7 +173,10 @@ public class mod_Autoban extends BaseMod
     private void logFile(String s)
     {
         if (logger != null)
+        {
             logger.println("[" + new Date() + "] " + s);
+            logger.flush();
+        }
     }
 
     private void logLocal(String s)
@@ -213,21 +215,25 @@ public class mod_Autoban extends BaseMod
 
     private void messageReceived(String victim, String message)
     {
+        logFile("Message: '" + message + "' from " + victim);
         if (checkCorrectNickname(victim))
         {
             String uppercase = message.replaceAll("[^A-Z\\xC0-\\xDF]", "");
+            logFile("Uppercase: '" + uppercase + "'");
             int minLength = Integer.parseInt(config.getProperty("minLength", "5"));
 
             if (uppercase.length() >= minLength)
             {
                 String original = message.replaceAll("[^A-Za-z\\xC0-\\xDF\\xE0-\\xFF]", "");
 
+                logFile("Original: '" + original + "'");
                 int maxPercentage = Integer.parseInt(config.getProperty("maxPercentage", "75"));
                 int percentage;
                 if (original.length() == 0)
                     percentage = 0;
                 else
                     percentage = 100 * uppercase.length() / original.length();
+                logFile("Percentage: " + percentage + "%");
                 if (percentage > maxPercentage)
                 {
                     int curWarnings = 0;
