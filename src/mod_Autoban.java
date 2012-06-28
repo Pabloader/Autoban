@@ -38,9 +38,9 @@ public class mod_Autoban extends BaseMod
     public void load()
     {
         loadConfig();
-        ModLoader.registerKey(this, this.onOffButton, false);
+        ModLoader.registerKey(this, onOffButton, false);
         ModLoader.addLocalization("ToggleAutoban", "Пeреключить Автобан");
-        ModLoader.registerKey(this, this.banButton, false);
+        ModLoader.registerKey(this, banButton, false);
         ModLoader.addLocalization("Ban", "Банить");
         try
         {
@@ -50,17 +50,17 @@ public class mod_Autoban extends BaseMod
         }
         catch (IOException ex)
         {
-            Logger.getLogger(mod_Autoban.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger("Minecraft").log(Level.SEVERE, null, ex);
         }
     }
 
     private void loadConfig()
     {
-        if (this.config == null)
-            this.config = new Properties();
+        if (config == null)
+            config = new Properties();
         try
         {
-            this.config.clear();
+            config.clear();
             File fConf = new File(Minecraft.b(), "/config/Autoban.cfg");
             if (!fConf.canRead())
             {
@@ -76,13 +76,13 @@ public class mod_Autoban extends BaseMod
                         writer.write(buf, 0, len);
                 }
             }
-            this.config.load(new FileReader(fConf));
-            if (!Boolean.parseBoolean(this.config.getProperty("nodebug", "true")))
+            config.load(new FileReader(fConf));
+            if (!Boolean.parseBoolean(config.getProperty("nodebug", "true")))
             {
-                logLocal("&3minLength &6= &2" + this.config.getProperty("minLength", "5"));
-                logLocal("&3maxPercentage &6= &2" + this.config.getProperty("maxPercentage", "75"));
-                logLocal("&3cooldownTime &6= &2" + this.config.getProperty("cooldownTime", "5m"));
-                logLocal("&3reloadConfigOnEnabling &6= &2" + this.config.getProperty("reloadConfigOnEnabling", "true"));
+                logLocal("&3minLength &6= &2" + config.getProperty("minLength", "5"));
+                logLocal("&3maxPercentage &6= &2" + config.getProperty("maxPercentage", "75"));
+                logLocal("&3cooldownTime &6= &2" + config.getProperty("cooldownTime", "5m"));
+                logLocal("&3reloadConfigOnEnabling &6= &2" + config.getProperty("reloadConfigOnEnabling", "true"));
             }
             logLocal("&2Config successful loaded");
         }
@@ -95,26 +95,26 @@ public class mod_Autoban extends BaseMod
     @Override
     public void keyboardEvent(afu event)
     {
-        if (this.onOffButton.equals(event))
-            if (!this.enabled)
+        if (onOffButton.equals(event))
+            if (!enabled)
                 enableAutoban();
             else
                 disableAutoban();
-        else if (this.banButton.equals(event))
-            if (this.incorrectName != null && !alreadyBanned.contains(incorrectName))
+        else if (banButton.equals(event))
+            if (incorrectName != null && !alreadyBanned.contains(incorrectName))
             {
-                sendFormattedCommand(this.incorrectName, "banCmd", "/ban %name% Incorrect nickname");
+                sendFormattedCommand(incorrectName, "banCmd", "/ban %name% Incorrect nickname");
                 alreadyBanned.add(incorrectName);
-                this.incorrectName = null;
+                incorrectName = null;
             }
             else
-                logLocal(this.config.getProperty("nobodyMsg", "&cNobody to ban!"));
+                logLocal(config.getProperty("nobodyMsg", "&cNobody to ban!"));
     }
 
     private void disableAutoban()
     {
-        logLocal(this.config.getProperty("disabledMsg", "&cNow disabled"));
-        this.enabled = false;
+        logLocal(config.getProperty("disabledMsg", "&cNow disabled"));
+        enabled = false;
     }
 
     @Override
@@ -124,20 +124,21 @@ public class mod_Autoban extends BaseMod
         String playerName = ModLoader.getMinecraftInstance().k.b;
         if (s.contains("Moderator (mod) " + playerName))
         {
-            boolean enableOnEnter = Boolean.parseBoolean(this.config.getProperty("enableOnEnter", "true"));
+            boolean enableOnEnter = Boolean.parseBoolean(config.getProperty("enableOnEnter", "true"));
             if (enableOnEnter)
                 enableAutoban();
         }
-        if (!this.enabled)
+        if (!enabled)
             return;
-        Matcher patPlayer = this.enterPlayer.matcher(s);
-        Matcher patMessage = this.chatLine.matcher(s);
+        Matcher patPlayer = enterPlayer.matcher(s);
+        Matcher patMessage = chatLine.matcher(s);
 
         if (patMessage.matches())
         {
             String nick = patMessage.group(1);
             String message = patMessage.group(2);
             messageReceived(nick, message);
+            logFile(s);
         }
         else if (patPlayer.matches())
             checkCorrectNickname(patPlayer.group(1));
@@ -145,20 +146,20 @@ public class mod_Autoban extends BaseMod
 
     private void enableAutoban()
     {
-        boolean reloadConfig = Boolean.parseBoolean(this.config.getProperty("reloadConfigOnEnabling", "true"));
+        boolean reloadConfig = Boolean.parseBoolean(config.getProperty("reloadConfigOnEnabling", "true"));
         if (reloadConfig)
             loadConfig();
-        logLocal(this.config.getProperty("enabledMsg", "&2Now enabled"));
-        this.enabled = true;
-        this.capsers.clear();
-        this.capsersTimestamps.clear();
+        logLocal(config.getProperty("enabledMsg", "&2Now enabled"));
+        enabled = true;
+        capsers.clear();
+        capsersTimestamps.clear();
     }
 
     @Override
     public void serverConnect(adl handler)
     {
-        this.enabled = false;
-        logLocal(this.config.getProperty("loadedMsg", "&3Loaded"));
+        enabled = false;
+        logLocal(config.getProperty("loadedMsg", "&3Loaded"));
     }
 
     private void log(String s)
@@ -191,7 +192,7 @@ public class mod_Autoban extends BaseMod
 
     private void sendFormattedCommand(String victim, String propertyName, String defaultCmd)
     {
-        String cmd = this.config.getProperty(propertyName, defaultCmd);
+        String cmd = config.getProperty(propertyName, defaultCmd);
         if (cmd.contains("%name%"))
             cmd = cmd.replace("%name%", victim);
         sendMessage(cmd);
@@ -199,7 +200,7 @@ public class mod_Autoban extends BaseMod
 
     private void logFormattedMessage(String victim, String propertyName, String defaultCmd)
     {
-        String msg = this.config.getProperty(propertyName, defaultCmd);
+        String msg = config.getProperty(propertyName, defaultCmd);
         if (msg.contains("%name%"))
             msg = msg.replace("%name%", victim);
         logLocal(msg);
@@ -215,13 +216,13 @@ public class mod_Autoban extends BaseMod
         if (checkCorrectNickname(victim))
         {
             String uppercase = message.replaceAll("[^A-Z\\xC0-\\xDF]", "");
-            int minLength = Integer.parseInt(this.config.getProperty("minLength", "5"));
+            int minLength = Integer.parseInt(config.getProperty("minLength", "5"));
 
             if (uppercase.length() >= minLength)
             {
                 String original = message.replaceAll("[^A-Za-z\\xC0-\\xDF\\xE0-\\xFF]", "");
 
-                int maxPercentage = Integer.parseInt(this.config.getProperty("maxPercentage", "75"));
+                int maxPercentage = Integer.parseInt(config.getProperty("maxPercentage", "75"));
                 int percentage;
                 if (original.length() == 0)
                     percentage = 0;
@@ -231,16 +232,16 @@ public class mod_Autoban extends BaseMod
                 {
                     int curWarnings = 0;
                     long timestamp = 0L;
-                    if (this.capsers.containsKey(victim))
+                    if (capsers.containsKey(victim))
                     {
-                        curWarnings = ((Integer) this.capsers.get(victim)).intValue();
-                        timestamp = ((Long) this.capsersTimestamps.get(victim)).longValue();
+                        curWarnings = capsers.get(victim);
+                        timestamp = capsersTimestamps.get(victim);
                     }
                     if (System.currentTimeMillis() - timestamp > getCooldownTime())
                         curWarnings = 0;
                     curWarnings++;
-                    this.capsers.put(victim, Integer.valueOf(curWarnings));
-                    this.capsersTimestamps.put(victim, Long.valueOf(System.currentTimeMillis()));
+                    capsers.put(victim, curWarnings);
+                    capsersTimestamps.put(victim, System.currentTimeMillis());
                     switch (curWarnings)
                     {
                         case 1:
@@ -254,8 +255,8 @@ public class mod_Autoban extends BaseMod
                             break;
                         default:
                             sendFormattedCommand(victim, "lastCmd", "/tempban %name% 1 hour Caps Lock, all warning was ignored, 1 hour");
-                            this.capsers.remove(victim);
-                            this.capsersTimestamps.remove(victim);
+                            capsers.remove(victim);
+                            capsersTimestamps.remove(victim);
                     }
                 }
             }
@@ -272,25 +273,27 @@ public class mod_Autoban extends BaseMod
         String digits = name.replaceAll("\\D", "");
         boolean incorrect = digits.length() > 4;
         incorrect &= incorrectNickname.matcher(name).find();
-        boolean probablyIncorrect = this.probablyIncorrectNickname.matcher(name).find();
+        boolean probablyIncorrect = probablyIncorrectNickname.matcher(name).find();
         if (alreadyBanned.contains(name))
             return false;
         if (incorrect)
         {
             logFormattedMessage(name, "incorrectMsg", "Nickname &2%name%&6 is &cincorrect. &6Press ban button to ban");
-            this.incorrectName = name;
+            incorrectName = name;
         }
         else if (probablyIncorrect)
         {
             logFormattedMessage(name, "probablyIncorrectMsg", "Nickname &2%name%&6 is &3probably incorrect. &6Press ban button to ban");
-            this.incorrectName = name;
+            incorrectName = name;
         }
+        else
+            logFile("Nickname " + name + " is correct");
         return true;
     }
 
     private long getCooldownTime()
     {
-        String cooldown = this.config.getProperty("cooldownTime", "5m");
+        String cooldown = config.getProperty("cooldownTime", "5m");
         long cooldownTime = Integer.parseInt(cooldown.substring(0, cooldown.length() - 1));
         char timeMultiplier = cooldown.charAt(cooldown.length() - 1);
         switch (timeMultiplier)
