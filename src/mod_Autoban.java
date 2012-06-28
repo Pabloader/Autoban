@@ -17,21 +17,22 @@ public class mod_Autoban extends BaseMod
     Pattern chatLine = Pattern.compile("\\[G\\]\\s*([a-z0-9_]+):(.*)", Pattern.CASE_INSENSITIVE);
     Pattern enterPlayer = Pattern.compile("^([a-z0-9_]+)\\s.*", Pattern.CASE_INSENSITIVE);
     Pattern incorrectNickname = Pattern.compile("(\\w)\\1{3,}", Pattern.CASE_INSENSITIVE);
-    Pattern probablyIncorrectNickname = Pattern.compile("\\D\\d\\D|^\\d+\\D", Pattern.CASE_INSENSITIVE);
+    Pattern probablyIncorrectNickname = Pattern.compile("\\D\\d\\D+\\d\\D|^\\d+\\D", Pattern.CASE_INSENSITIVE);
     Properties config = null;
     afu onOffButton = new afu("ToggleAutoban", 64);
     afu banButton = new afu("Ban", 65);
+    afu ignoreButton = new afu("Ignore", 68);
     boolean enabled = false;
     private Map<String, Integer> capsers = new HashMap();
     private Map<String, Long> capsersTimestamps = new HashMap();
     private String incorrectName = null;
-    private PrintWriter logger;
-    private Set<String> alreadyBanned = new HashSet<>();
+    private OutputStream logger;
+    private Set<String> ignored = new HashSet<>();
 
     @Override
     public String getVersion()
     {
-        return "0.0.19e";
+        return "0.0.20";
     }
 
     @Override
@@ -42,11 +43,13 @@ public class mod_Autoban extends BaseMod
         ModLoader.addLocalization("ToggleAutoban", "Пeреключить Автобан");
         ModLoader.registerKey(this, banButton, false);
         ModLoader.addLocalization("Ban", "Банить");
+        ModLoader.registerKey(this, ignoreButton, false);
+        ModLoader.addLocalization("Ignore", "Игнорировать");
         try
         {
             File f = new File(Minecraft.b(), "/Autoban.log");
             f.createNewFile();
-            logger = new PrintWriter(f);
+            logger = new FileOutputStream(f);
         }
         catch (IOException ex)
         {
@@ -101,10 +104,19 @@ public class mod_Autoban extends BaseMod
             else
                 disableAutoban();
         else if (banButton.equals(event))
-            if (incorrectName != null && !alreadyBanned.contains(incorrectName))
+            if (incorrectName != null && !ignored.contains(incorrectName))
             {
                 sendFormattedCommand(incorrectName, "banCmd", "/ban %name% Incorrect nickname");
-                alreadyBanned.add(incorrectName);
+                ignored.add(incorrectName);
+                incorrectName = null;
+            }
+            else
+                logLocal(config.getProperty("nobodyMsg", "&cNobody to ban!"));
+        else if (ignoreButton.equals(event))
+            if (incorrectName != null && !ignored.contains(incorrectName))
+            {
+                ignored.add(incorrectName);
+                logLocal(incorrectName + " &6ignored");
                 incorrectName = null;
             }
             else
@@ -172,10 +184,24 @@ public class mod_Autoban extends BaseMod
 
     private void logFile(String s)
     {
-        if (logger != null)
+        try
         {
-            logger.println("[" + new Date() + "] " + s);
-            logger.flush();
+            if (logger != null)
+            {
+                String message = "[" + new Date() + "] " + s + "\n";
+                char[] cmess = message.toCharArray();
+                byte[] bmess = message.getBytes();
+                for (int i = 0; i < bmess.length; i++)
+                    if (bmess[i] == '?')
+                        logger.write((byte) cmess[i]);
+                    else
+                        logger.write(bmess[i]);
+                logger.flush();
+            }
+        }
+        catch (IOException ex)
+        {
+            Logger.getLogger(mod_Autoban.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
 
@@ -278,9 +304,9 @@ public class mod_Autoban extends BaseMod
     {
         String digits = name.replaceAll("\\D", "");
         boolean incorrect = digits.length() > 4;
-        incorrect &= incorrectNickname.matcher(name).find();
+        incorrect |= incorrectNickname.matcher(name).find();
         boolean probablyIncorrect = probablyIncorrectNickname.matcher(name).find();
-        if (alreadyBanned.contains(name))
+        if (ignored.contains(name))
             return false;
         if (incorrect)
         {
