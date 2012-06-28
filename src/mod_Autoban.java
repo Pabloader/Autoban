@@ -1,3 +1,4 @@
+
 /**
  *
  * @author P@bloid
@@ -15,10 +16,10 @@ import net.minecraft.client.Minecraft;
 public class mod_Autoban extends BaseMod
 {
 
-    Pattern chatLine = Pattern.compile("\\[G\\]\\s*(\\w*)\\s*:\\s*(.*?)\\s*", 2);
-    Pattern enterPlayer = Pattern.compile("^([a-z0-9_]+)\\s.*", 2);
-    Pattern incorrectNickname = Pattern.compile("(\\w)\\1{3,}", 2);
-    Pattern probablyIncorrectNickname = Pattern.compile("\\w\\d\\w|^\\d", 2);
+    Pattern chatLine = Pattern.compile("\\[G\\]\\s*([a-z0-9_]+):(.*)", Pattern.CASE_INSENSITIVE);
+    Pattern enterPlayer = Pattern.compile("^([a-z0-9_]+)\\s.*", Pattern.CASE_INSENSITIVE);
+    Pattern incorrectNickname = Pattern.compile("(\\w)\\1{3,}", Pattern.CASE_INSENSITIVE);
+    Pattern probablyIncorrectNickname = Pattern.compile("\\D\\d\\D|^\\d+\\D", Pattern.CASE_INSENSITIVE);
     Properties config = null;
     afu onOffButton = new afu("ToggleAutoban", 64);
     afu banButton = new afu("Ban", 65);
@@ -26,6 +27,7 @@ public class mod_Autoban extends BaseMod
     private Map<String, Integer> capsers = new HashMap();
     private Map<String, Long> capsersTimestamps = new HashMap();
     private String incorrectName = null;
+    private PrintWriter logger;
 
     @Override
     public String getVersion()
@@ -41,6 +43,16 @@ public class mod_Autoban extends BaseMod
         ModLoader.addLocalization("ToggleAutoban", "Пeреключить Автобан");
         ModLoader.registerKey(this, this.banButton, false);
         ModLoader.addLocalization("Ban", "Банить");
+        try
+        {
+            File f = new File(Minecraft.b(), "/Autoban.log");
+            f.createNewFile();
+            logger = new PrintWriter(f);
+        }
+        catch (IOException ex)
+        {
+            Logger.getLogger(mod_Autoban.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
 
     private void loadConfig()
@@ -109,20 +121,25 @@ public class mod_Autoban extends BaseMod
     public void receiveChatPacket(String s)
     {
         s = s.replaceAll("§[0-9a-f]", "");
-        if (s.contains("Moderator (mod) " + ModLoader.getMinecraftInstance().k.b))
-            enableAutoban();
+        String playerName = ModLoader.getMinecraftInstance().k.b;
+        if (s.contains("Moderator (mod) " + playerName))
+        {
+            boolean enableOnEnter = Boolean.parseBoolean(this.config.getProperty("enableOnEnter", "true"));
+            if (enableOnEnter)
+                enableAutoban();
+        }
         if (!this.enabled)
             return;
         Matcher patPlayer = this.enterPlayer.matcher(s);
         Matcher patMessage = this.chatLine.matcher(s);
 
-        if (patMessage.matches())
+        if (patMessage.find())
         {
             String nick = patMessage.group(1);
             String message = patMessage.group(2);
             messageReceived(nick, message);
         }
-        else if (patPlayer.matches())
+        else if (patPlayer.find())
             checkCorrectNickname(patPlayer.group(1));
     }
 
@@ -150,6 +167,8 @@ public class mod_Autoban extends BaseMod
         s = s.replaceAll("&[0-9a-f]", "");
         s = s.replace("[Autoban]", "");
         System.out.println("[Autoban] " + s);
+        if (logger != null)
+            logger.println("[Autoban] " + s);
     }
 
     private void logLocal(String s)
