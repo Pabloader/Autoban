@@ -4,9 +4,7 @@
  * @author P@bloid
  */
 import java.io.*;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -28,6 +26,7 @@ public class mod_Autoban extends BaseMod
     private Map<String, Long> capsersTimestamps = new HashMap();
     private String incorrectName = null;
     private PrintWriter logger;
+    private Set<String> alreadyBanned = new HashSet<>();
 
     @Override
     public String getVersion()
@@ -102,9 +101,10 @@ public class mod_Autoban extends BaseMod
             else
                 disableAutoban();
         else if (this.banButton.equals(event))
-            if (this.incorrectName != null)
+            if (this.incorrectName != null && !alreadyBanned.contains(incorrectName))
             {
                 sendFormattedCommand(this.incorrectName, "banCmd", "/ban %name% Incorrect nickname");
+                alreadyBanned.add(incorrectName);
                 this.incorrectName = null;
             }
             else
@@ -133,13 +133,13 @@ public class mod_Autoban extends BaseMod
         Matcher patPlayer = this.enterPlayer.matcher(s);
         Matcher patMessage = this.chatLine.matcher(s);
 
-        if (patMessage.find())
+        if (patMessage.matches())
         {
             String nick = patMessage.group(1);
             String message = patMessage.group(2);
             messageReceived(nick, message);
         }
-        else if (patPlayer.find())
+        else if (patPlayer.matches())
             checkCorrectNickname(patPlayer.group(1));
     }
 
@@ -167,8 +167,13 @@ public class mod_Autoban extends BaseMod
         s = s.replaceAll("&[0-9a-f]", "");
         s = s.replace("[Autoban]", "");
         System.out.println("[Autoban] " + s);
+        logFile(s);
+    }
+
+    private void logFile(String s)
+    {
         if (logger != null)
-            logger.println("[Autoban] " + s);
+            logger.println("[" + new Date() + "] " + s);
     }
 
     private void logLocal(String s)
@@ -266,7 +271,10 @@ public class mod_Autoban extends BaseMod
     {
         String digits = name.replaceAll("\\D", "");
         boolean incorrect = digits.length() > 4;
-        boolean probablyIncorrect = this.probablyIncorrectNickname.matcher(name).matches();
+        incorrect &= incorrectNickname.matcher(name).find();
+        boolean probablyIncorrect = this.probablyIncorrectNickname.matcher(name).find();
+        if (alreadyBanned.contains(name))
+            return false;
         if (incorrect)
         {
             logFormattedMessage(name, "incorrectMsg", "Nickname &2%name%&6 is &cincorrect. &6Press ban button to ban");
