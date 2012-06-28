@@ -21,7 +21,7 @@ public class mod_Autoban extends BaseMod
     Properties config = null;
     afu onOffButton = new afu("ToggleAutoban", 64);
     afu banButton = new afu("Ban", 65);
-    afu ignoreButton = new afu("Ignore", 68);
+    afu ignoreButton = new afu("Ignore", 70);
     boolean enabled = false;
     private Map<String, Integer> capsers = new HashMap();
     private Map<String, Long> capsersTimestamps = new HashMap();
@@ -119,8 +119,6 @@ public class mod_Autoban extends BaseMod
                 logLocal(incorrectName + " &6ignored");
                 incorrectName = null;
             }
-            else
-                logLocal(config.getProperty("nobodyMsg", "&cNobody to ban!"));
     }
 
     private void disableAutoban()
@@ -184,6 +182,7 @@ public class mod_Autoban extends BaseMod
 
     private void logFile(String s)
     {
+        //TODO Параметр в конфиге, запрещающий лог
         try
         {
             if (logger != null)
