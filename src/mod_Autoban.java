@@ -28,6 +28,7 @@ public class mod_Autoban extends BaseMod
     private String incorrectName = null;
     private OutputStream logger;
     private Set<String> ignored = new HashSet<>();
+    private Writer ignoreWriter;
 
     @Override
     public String getVersion()
@@ -48,13 +49,43 @@ public class mod_Autoban extends BaseMod
         try
         {
             File f = new File(Minecraft.b(), "/Autoban.log");
-            f.createNewFile();
+            if (!f.exists())
+                f.createNewFile();
             logger = new FileOutputStream(f);
+            File ign = new File(Minecraft.b(), "/mods/Autoban/ignored.txt");
+            if (!ign.exists())
+            {
+                new File(Minecraft.b(), "/mods/Autoban/").mkdirs();
+                ign.createNewFile();
+            }
+            try (BufferedReader br = new BufferedReader(new FileReader(ign)))
+            {
+                String line;
+                while ((line = br.readLine()) != null)
+                    ignored.add(line.trim().toLowerCase());
+            }
+            ignoreWriter = new FileWriter(ign);
         }
         catch (IOException ex)
         {
             Logger.getLogger(getClass().getName()).log(Level.SEVERE, null, ex);
         }
+    }
+
+    private void ignore(String ignor)
+    {
+        ignor = ignor.toLowerCase();
+        ignored.add(ignor);
+        if (ignoreWriter != null)
+            try
+            {
+                ignoreWriter.append(ignor).append('\n');
+                ignoreWriter.flush();
+            }
+            catch (IOException ex)
+            {
+                Logger.getLogger(mod_Autoban.class.getName()).log(Level.SEVERE, null, ex);
+            }
     }
 
     private void loadConfig()
@@ -104,18 +135,18 @@ public class mod_Autoban extends BaseMod
             else
                 disableAutoban();
         else if (banButton.equals(event))
-            if (incorrectName != null && !ignored.contains(incorrectName))
+            if (incorrectName != null && !ignored.contains(incorrectName.toLowerCase()))
             {
                 sendFormattedCommand(incorrectName, "banCmd", "/ban %name% Incorrect nickname");
-                ignored.add(incorrectName);
+                ignore(incorrectName);
                 incorrectName = null;
             }
             else
                 logLocal(config.getProperty("nobodyMsg", "&cNobody to ban!"));
         else if (ignoreButton.equals(event))
-            if (incorrectName != null && !ignored.contains(incorrectName))
+            if (incorrectName != null && !ignored.contains(incorrectName.toLowerCase()))
             {
-                ignored.add(incorrectName);
+                ignore(incorrectName);
                 logLocal(incorrectName + " &6ignored");
                 incorrectName = null;
             }
@@ -305,7 +336,7 @@ public class mod_Autoban extends BaseMod
         boolean incorrect = digits.length() > 4;
         incorrect |= incorrectNickname.matcher(name).find();
         boolean probablyIncorrect = probablyIncorrectNickname.matcher(name).find();
-        if (ignored.contains(name))
+        if (ignored.contains(name.toLowerCase()))
             return false;
         if (incorrect)
         {
