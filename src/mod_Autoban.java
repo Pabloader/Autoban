@@ -64,7 +64,7 @@ public class mod_Autoban extends BaseMod
                 while ((line = br.readLine()) != null)
                     ignored.add(line.trim().toLowerCase());
             }
-            ignoreWriter = new FileWriter(ign);
+            ignoreWriter = new FileWriter(ign, true);
         }
         catch (IOException ex)
         {
@@ -229,7 +229,7 @@ public class mod_Autoban extends BaseMod
                 logger.flush();
             }
         }
-        catch (IOException ex)
+        catch (Exception ex)
         {
             Logger.getLogger(mod_Autoban.class.getName()).log(Level.SEVERE, null, ex);
         }
