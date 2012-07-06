@@ -14,10 +14,11 @@ import net.minecraft.client.Minecraft;
 public class mod_Autoban extends BaseMod
 {
 
-    Pattern chatLine = Pattern.compile("\\[G\\]\\s*([a-z0-9_]+):(.*)", Pattern.CASE_INSENSITIVE);
+    Pattern chatLine = Pattern.compile("\\[G\\]\\s*([a-z0-9_]+):\\s*(.*)", Pattern.CASE_INSENSITIVE);
     Pattern enterPlayer = Pattern.compile("^([a-z0-9_]+)\\s.*", Pattern.CASE_INSENSITIVE);
     Pattern incorrectNickname = Pattern.compile("(\\w)\\1{3,}", Pattern.CASE_INSENSITIVE);
     Pattern probablyIncorrectNickname = Pattern.compile("\\D\\d\\D+\\d\\D|^\\d+\\D", Pattern.CASE_INSENSITIVE);
+    Pattern death = Pattern.compile("^([a-z0-9_]+) was (?:slain|shot) by ([a-z0-9_]+)$", Pattern.CASE_INSENSITIVE);
     Properties config = null;
     afu onOffButton = new afu("ToggleAutoban", 64);
     afu banButton = new afu("Ban", 65);
@@ -29,11 +30,12 @@ public class mod_Autoban extends BaseMod
     private OutputStream logger;
     private Set<String> ignored = new HashSet<>();
     private Writer ignoreWriter;
+    private Writer deathWriter;
 
     @Override
     public String getVersion()
     {
-        return "0.0.20";
+        return "0.0.21";
     }
 
     @Override
@@ -48,16 +50,17 @@ public class mod_Autoban extends BaseMod
         ModLoader.addLocalization("Ignore", "Игнорировать");
         try
         {
-            File f = new File(Minecraft.b(), "/Autoban.log");
+            File ign = new File(getConfigDirectory(), "ignored.txt");
+            File f = new File(getConfigDirectory(), "Autoban.log");
             if (!f.exists())
                 f.createNewFile();
-            logger = new FileOutputStream(f);
-            File ign = new File(Minecraft.b(), "/mods/Autoban/ignored.txt");
+            File deaths = new File(getConfigDirectory(), "deaths.log");
+            if (!deaths.exists())
+                deaths.createNewFile();
+            deathWriter = new FileWriter(deaths, true);
+            logger = new FileOutputStream(f, true);
             if (!ign.exists())
-            {
-                new File(Minecraft.b(), "/mods/Autoban/").mkdirs();
                 ign.createNewFile();
-            }
             try (BufferedReader br = new BufferedReader(new FileReader(ign)))
             {
                 String line;
@@ -70,6 +73,14 @@ public class mod_Autoban extends BaseMod
         {
             Logger.getLogger(getClass().getName()).log(Level.SEVERE, null, ex);
         }
+    }
+
+    private File getConfigDirectory()
+    {
+        File dir = new File(Minecraft.b(), "/mods/Autoban/");
+        if (!dir.exists())
+            dir.mkdirs();
+        return dir;
     }
 
     private void ignore(String ignor)
@@ -95,7 +106,7 @@ public class mod_Autoban extends BaseMod
         try
         {
             config.clear();
-            File fConf = new File(Minecraft.b(), "/config/Autoban.cfg");
+            File fConf = new File(getConfigDirectory(), "Autoban.cfg");
             if (!fConf.canRead())
             {
                 log("Error loading config, using default values");
@@ -173,6 +184,7 @@ public class mod_Autoban extends BaseMod
             return;
         Matcher patPlayer = enterPlayer.matcher(s);
         Matcher patMessage = chatLine.matcher(s);
+        Matcher patDeath = death.matcher(s);
 
         if (patMessage.matches())
         {
@@ -183,6 +195,28 @@ public class mod_Autoban extends BaseMod
         }
         else if (patPlayer.matches())
             checkCorrectNickname(patPlayer.group(1));
+        else if (patDeath.matches())
+        {
+            String killer = patDeath.group(2);
+            switch (killer.toLowerCase())
+            {
+                case "skeleton":
+                case "zombie":
+                case "spider":
+                case "blaze":
+                case "enderman":
+                    return;
+            }
+            try
+            {
+                deathWriter.append('[').append(new Date().toString()).append(']').append(s).append("\n");
+                deathWriter.flush();
+            }
+            catch (IOException ex)
+            {
+            }
+
+        }
     }
 
     private void enableAutoban()
@@ -223,7 +257,7 @@ public class mod_Autoban extends BaseMod
                 byte[] bmess = message.getBytes();
                 for (int i = 0; i < bmess.length; i++)
                     if (bmess[i] == '?')
-                        logger.write((byte) cmess[i]);
+                        logger.write(message.charAt(i));
                     else
                         logger.write(bmess[i]);
                 logger.flush();
@@ -272,54 +306,53 @@ public class mod_Autoban extends BaseMod
     private void messageReceived(String victim, String message)
     {
         logFile("Message: '" + message + "' from " + victim);
-        if (checkCorrectNickname(victim))
+        checkCorrectNickname(victim);
+
+        String uppercase = message.replaceAll("[^A-Z\\xC0-\\xDF]", "");
+        logFile("Uppercase: '" + uppercase + "'");
+        int minLength = Integer.parseInt(config.getProperty("minLength", "5"));
+
+        if (uppercase.length() >= minLength)
         {
-            String uppercase = message.replaceAll("[^A-Z\\xC0-\\xDF]", "");
-            logFile("Uppercase: '" + uppercase + "'");
-            int minLength = Integer.parseInt(config.getProperty("minLength", "5"));
+            String original = message.replaceAll("[^A-Za-z\\xC0-\\xDF\\xE0-\\xFF]", "");
 
-            if (uppercase.length() >= minLength)
+            logFile("Original: '" + original + "'");
+            int maxPercentage = Integer.parseInt(config.getProperty("maxPercentage", "75"));
+            int percentage;
+            if (original.length() == 0)
+                percentage = 0;
+            else
+                percentage = 100 * uppercase.length() / original.length();
+            logFile("Percentage: " + percentage + "%");
+            if (percentage > maxPercentage)
             {
-                String original = message.replaceAll("[^A-Za-z\\xC0-\\xDF\\xE0-\\xFF]", "");
-
-                logFile("Original: '" + original + "'");
-                int maxPercentage = Integer.parseInt(config.getProperty("maxPercentage", "75"));
-                int percentage;
-                if (original.length() == 0)
-                    percentage = 0;
-                else
-                    percentage = 100 * uppercase.length() / original.length();
-                logFile("Percentage: " + percentage + "%");
-                if (percentage > maxPercentage)
+                int curWarnings = 0;
+                long timestamp = 0L;
+                if (capsers.containsKey(victim))
                 {
-                    int curWarnings = 0;
-                    long timestamp = 0L;
-                    if (capsers.containsKey(victim))
-                    {
-                        curWarnings = capsers.get(victim);
-                        timestamp = capsersTimestamps.get(victim);
-                    }
-                    if (System.currentTimeMillis() - timestamp > getCooldownTime())
-                        curWarnings = 0;
-                    curWarnings++;
-                    capsers.put(victim, curWarnings);
-                    capsersTimestamps.put(victim, System.currentTimeMillis());
-                    switch (curWarnings)
-                    {
-                        case 1:
-                            sendFormattedCommand(victim, "firstCmd", "/tell %name% Turn off Caps Lock, please");
-                            break;
-                        case 2:
-                            sendFormattedCommand(victim, "secondCmd", "/warn %name% Caps Lock");
-                            break;
-                        case 3:
-                            sendFormattedCommand(victim, "thirdCmd", "/kick %name% Caps Lock");
-                            break;
-                        default:
-                            sendFormattedCommand(victim, "lastCmd", "/tempban %name% 1 hour Caps Lock, all warning was ignored, 1 hour");
-                            capsers.remove(victim);
-                            capsersTimestamps.remove(victim);
-                    }
+                    curWarnings = capsers.get(victim);
+                    timestamp = capsersTimestamps.get(victim);
+                }
+                if (System.currentTimeMillis() - timestamp > getCooldownTime())
+                    curWarnings = 0;
+                curWarnings++;
+                capsers.put(victim, curWarnings);
+                capsersTimestamps.put(victim, System.currentTimeMillis());
+                switch (curWarnings)
+                {
+                    case 1:
+                        sendFormattedCommand(victim, "firstCmd", "/tell %name% Turn off Caps Lock, please");
+                        break;
+                    case 2:
+                        sendFormattedCommand(victim, "secondCmd", "/warn %name% Caps Lock");
+                        break;
+                    case 3:
+                        sendFormattedCommand(victim, "thirdCmd", "/kick %name% Caps Lock");
+                        break;
+                    default:
+                        sendFormattedCommand(victim, "lastCmd", "/tempban %name% 1 hour Caps Lock, all warning was ignored, 1 hour");
+                        capsers.remove(victim);
+                        capsersTimestamps.remove(victim);
                 }
             }
         }
@@ -330,14 +363,14 @@ public class mod_Autoban extends BaseMod
         return s.replace('&', '§');
     }
 
-    private boolean checkCorrectNickname(String name)
+    private void checkCorrectNickname(String name)
     {
         String digits = name.replaceAll("\\D", "");
         boolean incorrect = digits.length() > 4;
         incorrect |= incorrectNickname.matcher(name).find();
         boolean probablyIncorrect = probablyIncorrectNickname.matcher(name).find();
         if (ignored.contains(name.toLowerCase()))
-            return false;
+            return;
         if (incorrect)
         {
             logFormattedMessage(name, "incorrectMsg", "Nickname &2%name%&6 is &cincorrect. &6Press ban button to ban");
@@ -350,7 +383,6 @@ public class mod_Autoban extends BaseMod
         }
         else
             logFile("Nickname " + name + " is correct");
-        return true;
     }
 
     private long getCooldownTime()
