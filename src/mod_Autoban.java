@@ -18,8 +18,11 @@ public class mod_Autoban extends BaseMod
     Pattern enterPlayer = Pattern.compile("^([a-z0-9_]+)\\s.*", Pattern.CASE_INSENSITIVE);
     Pattern incorrectNickname = Pattern.compile("(\\w)\\1{3,}", Pattern.CASE_INSENSITIVE);
     Pattern probablyIncorrectNickname = Pattern.compile("\\D\\d\\D+\\d\\D|^\\d+\\D", Pattern.CASE_INSENSITIVE);
-    Pattern death = Pattern.compile("^([a-z0-9_]+) was (?:slain|shot) by ([a-z0-9_]+)$", Pattern.CASE_INSENSITIVE);
+    Pattern death = Pattern.compile("([a-z0-9_]+) was (?:slain|shot) by ([a-z0-9_]+)", Pattern.CASE_INSENSITIVE);
+    Pattern logLine = Pattern.compile("([a-z0-9_]+) destroyed ([\\w\\s]+) at ([-\\d]{1,5}):([-\\d]{1,5}):([-\\d]{1,5})", Pattern.CASE_INSENSITIVE);
+    Pattern logPage = Pattern.compile("page (\\d+)/(\\d+)", Pattern.CASE_INSENSITIVE);
     Properties config = null;
+    afu rollbackButton = new afu("RollBack", 62);
     afu onOffButton = new afu("ToggleAutoban", 64);
     afu banButton = new afu("Ban", 65);
     afu ignoreButton = new afu("Ignore", 70);
@@ -31,23 +34,28 @@ public class mod_Autoban extends BaseMod
     private Set<String> ignored = new HashSet<>();
     private Writer ignoreWriter;
     private Writer deathWriter;
+    private Map<Point3d, Integer> rolled = new HashMap<>();
+    private boolean rollback = false;
 
     @Override
     public String getVersion()
     {
-        return "0.0.21";
+        return "0.0.22";
     }
 
     @Override
     public void load()
     {
         loadConfig();
+        ModLoader.registerKey(this, rollbackButton, false);
+        ModLoader.addLocalization("RollBack", "Откатить");
         ModLoader.registerKey(this, onOffButton, false);
         ModLoader.addLocalization("ToggleAutoban", "Пeреключить Автобан");
         ModLoader.registerKey(this, banButton, false);
         ModLoader.addLocalization("Ban", "Банить");
         ModLoader.registerKey(this, ignoreButton, false);
         ModLoader.addLocalization("Ignore", "Игнорировать");
+        ModLoader.setInGameHook(this, true, true);
         try
         {
             File ign = new File(getConfigDirectory(), "ignored.txt");
@@ -81,6 +89,24 @@ public class mod_Autoban extends BaseMod
         if (!dir.exists())
             dir.mkdirs();
         return dir;
+    }
+
+    @Override
+    public boolean onTickInGame(float tick, Minecraft game)
+    {
+        return true;
+    }
+
+    public void setBlock(Point3d p, int blockType)
+    {
+        yw player = ModLoader.getMinecraftInstance().h;
+        player.k.d(p.x, p.y, p.z, blockType);
+    }
+
+    public int getBlock(Point3d p)
+    {
+        yw player = ModLoader.getMinecraftInstance().h;
+        return player.k.a(p.x, p.y, p.z);
     }
 
     private void ignore(String ignor)
@@ -155,11 +181,27 @@ public class mod_Autoban extends BaseMod
             else
                 logLocal(config.getProperty("nobodyMsg", "&cNobody to ban!"));
         else if (ignoreButton.equals(event))
+        {
             if (incorrectName != null && !ignored.contains(incorrectName.toLowerCase()))
             {
                 ignore(incorrectName);
                 logLocal(incorrectName + " &6ignored");
                 incorrectName = null;
+            }
+        }
+        else if (rollbackButton.equals(event))
+            if (!rollback)
+            {
+                rollback = true;
+                logLocal(config.getProperty("rollbackEnabledMsg", "&2Rollback enabled"));
+            }
+            else
+            {
+                rollback = false;
+                logLocal(config.getProperty("rollbackDisabledMsg", "&cRollback disabled"));
+                for (Map.Entry<Point3d, Integer> entry : rolled.entrySet())
+                    setBlock(entry.getKey(), entry.getValue());
+                rolled.clear();
             }
     }
 
@@ -182,41 +224,73 @@ public class mod_Autoban extends BaseMod
         }
         if (!enabled)
             return;
-        Matcher patPlayer = enterPlayer.matcher(s);
-        Matcher patMessage = chatLine.matcher(s);
-        Matcher patDeath = death.matcher(s);
-
-        if (patMessage.matches())
+        final String line = s;
+        final Matcher patPlayer = enterPlayer.matcher(s);
+        final Matcher patMessage = chatLine.matcher(s);
+        final Matcher patDeath = death.matcher(s);
+        final Matcher patLog = logLine.matcher(s);
+        final Matcher patPage = logPage.matcher(s);
+        new Thread()
         {
-            String nick = patMessage.group(1);
-            String message = patMessage.group(2);
-            messageReceived(nick, message);
-            logFile(s);
-        }
-        else if (patPlayer.matches())
-            checkCorrectNickname(patPlayer.group(1));
-        else if (patDeath.matches())
-        {
-            String killer = patDeath.group(2);
-            switch (killer.toLowerCase())
-            {
-                case "skeleton":
-                case "zombie":
-                case "spider":
-                case "blaze":
-                case "enderman":
-                    return;
-            }
-            try
-            {
-                deathWriter.append('[').append(new Date().toString()).append(']').append(s).append("\n");
-                deathWriter.flush();
-            }
-            catch (IOException ex)
-            {
-            }
 
-        }
+            @Override
+            public void run()
+            {
+                if (patMessage.matches())
+                {
+                    String nick = patMessage.group(1);
+                    String message = patMessage.group(2);
+                    messageReceived(nick, message);
+                    logFile(line);
+                }
+                else if (rollback && patPage.find())
+                {
+                    int cur = Integer.parseInt(patPage.group(1));
+                    int all = Integer.parseInt(patPage.group(2));
+                    if (cur != all)
+                        sendFormattedCommand("", "nextCmd", "/lb next");
+
+                }
+                else if (patDeath.matches())
+                {
+                    String killer = patDeath.group(2);
+                    switch (killer.toLowerCase())
+                    {
+                        case "skeleton":
+                        case "zombie":
+                        case "spider":
+                        case "blaze":
+                        case "enderman":
+                            return;
+                    }
+                    try
+                    {
+                        deathWriter.append('[').append(new Date().toString()).append(']').append(line).append("\n");
+                        deathWriter.flush();
+                    }
+                    catch (IOException ex)
+                    {
+                    }
+
+                }
+                else if (rollback && patLog.find())
+                {
+                    int x = Integer.parseInt(patLog.group(3));
+                    int y = Integer.parseInt(patLog.group(4));
+                    int z = Integer.parseInt(patLog.group(5));
+                    Point3d p3d = new Point3d(x, y, z);
+                    if (rolled.containsKey(p3d))
+                        return;
+                    else
+                        rolled.put(p3d, getBlock(p3d));
+                    String block = patLog.group(2);
+                    Material mat = Material.matchMaterial(block);
+                    setBlock(p3d, mat.getId());
+                }
+                else if (patPlayer.matches())
+                    checkCorrectNickname(patPlayer.group(1));
+            }
+        }.start();
     }
 
     private void enableAutoban()
